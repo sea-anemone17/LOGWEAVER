@@ -35,7 +35,6 @@
 .book-root .log-name{font:700 13px/1.5 system-ui,sans-serif;color:var(--speaker,var(--accent))}
 .book-root .log-time,.book-root .log-channel{font:11px/1.5 system-ui,sans-serif;color:var(--muted)}
 .book-root .log-channel{border:1px solid var(--line);border-radius:99px;padding:1px 7px}
-.book-root .log-row .log-text{color:var(--dialogue-color,var(--ink))}
 .book-root .log-text{font-size:14px;line-height:1.85;white-space:pre-wrap;word-break:break-word}
 .book-root .log-system{margin:13px 0;padding:13px 16px;background:var(--surface);border-left:2px solid var(--accent);color:var(--muted);font:12px/1.75 system-ui,sans-serif;white-space:pre-wrap}
 .book-root[data-layout="bubble"] .log-row{border-bottom:0}
@@ -43,13 +42,17 @@
 .book-root[data-layout="minimal"] .log-row{gap:10px;padding:calc(var(--spacing) * .7) 0}
 .book-root[data-layout="minimal"] .log-avatar{display:none}
 .book-root[data-layout="minimal"] .log-header{margin-bottom:3px}
+.book-root .log-row.channel-mode-normal{background:var(--channel-accent);border-radius:var(--radius);padding:14px 17px;margin:10px 0;border-bottom:0}
+.book-root .log-row.channel-mode-muted{background:color-mix(in srgb,var(--channel-accent) 42%,var(--paper));border-radius:var(--radius);padding:14px 17px;margin:10px 0;opacity:1}
+.book-root .log-row.channel-mode-normal .log-name,.book-root .log-row.channel-mode-muted .log-name{color:var(--speaker,var(--accent))}
+.book-root .log-system.channel-mode-normal{background:var(--channel-accent);color:var(--ink);border-left:0;border-radius:var(--radius)}
 .book-root .log-row.channel-mode-box{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--channel-accent);border-radius:var(--radius);padding:14px 17px;margin:11px 0;gap:12px}
 .book-root .log-row.channel-mode-line{border-left:3px solid var(--channel-accent);padding-left:15px;margin:6px 0}
-.book-root .log-row.channel-mode-muted{opacity:.75;background:color-mix(in srgb,var(--surface) 35%,transparent);padding-left:12px;padding-right:12px;border-radius:8px}
+
 .book-root .log-row.channel-mode-box .log-name,.book-root .log-row.channel-mode-line .log-name{color:var(--channel-accent)}
 .book-root .log-system.channel-mode-box{border:1px solid var(--line);border-left:4px solid var(--channel-accent);border-radius:var(--radius)}
 .book-root .log-system.channel-mode-line{border-left:4px solid var(--channel-accent)}
-.book-root .log-system.channel-mode-muted{opacity:.7;border-left:0}
+.book-root .log-system.channel-mode-muted{background:color-mix(in srgb,var(--channel-accent) 42%,var(--paper));opacity:1;border-left:0}
 .book-root .book-end{text-align:center;padding:0 18px 65px;color:var(--accent);letter-spacing:.22em}
 .book-root .book-postface{max-width:720px;margin:0 auto;padding:0 30px 60px;text-align:center;font-size:13px;white-space:pre-wrap;color:var(--muted);line-height:1.9}
 .book-root .log-row[data-editable="true"]{cursor:pointer}
