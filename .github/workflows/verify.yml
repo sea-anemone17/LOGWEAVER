@@ -1,0 +1,30 @@
+name: Verify LOGWEAVER
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JavaScript syntax
+        run: node --check app.js
+      - name: Check required studio files and controls
+        run: |
+          test -s index.html
+          test -s styles.css
+          test -s app.js
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const js = fs.readFileSync('app.js', 'utf8');
+          const ids = [...js.matchAll(/byId\('([A-Za-z][A-Za-z0-9]*)'\)/g)].map(x => x[1]);
+          const missing = [...new Set(ids)].filter(id => !html.includes('id="' + id + '"'));
+          if (missing.length) throw new Error('Missing HTML controls: ' + missing.join(', '));
+          console.log('Verified', new Set(ids).size, 'control IDs');
+          NODE
