@@ -10,6 +10,16 @@
     {id:'rose', name:'로즈 가든', desc:'로맨틱한 장미빛 편지지', paper:'#f7e9ee', surface:'#fff7f9', ink:'#523a45', muted:'#a28794', accent:'#b16d8d', line:'#ead1dc', font:'serif', layout:'bubble'},
     {id:'forest', name:'포레스트', desc:'따뜻한 녹색의 탐험 기록', paper:'#e9eee4', surface:'#f8faf4', ink:'#354235', muted:'#728072', accent:'#6e8e74', line:'#cdd8cb', font:'serif', layout:'classic'}
   ];
+  const CHANNEL_PALETTES = {
+    classic:{main:'#f3dce1',chat:'#e5e1e3',info:'#e0e5ef',other:'#ede7d8'},
+    night:{main:'#493544',chat:'#35313d',info:'#303e53',other:'#484131'},
+    modern:{main:'#e2ebf7',chat:'#e7e9ed',info:'#e1f0ed',other:'#f0e7dd'},
+    fantasy:{main:'#f2e3c6',chat:'#ded7c9',info:'#d9e2d4',other:'#e8d7bd'},
+    rose:{main:'#f6dce7',chat:'#ede6e9',info:'#e8dff5',other:'#f5e6d6'},
+    forest:{main:'#dcebdc',chat:'#e2e5dd',info:'#dce7ee',other:'#f1e7d4'}
+  };
+  const ROLE_NAMES = {main:'메인',chat:'사담',info:'정보',other:'기타'};
+  const ROLE_COLORS = ['main','chat','info','other'];
   const FONTS = {
     serif:'Georgia, "Noto Serif KR", "Batang", serif',
     sans:'"Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif',
@@ -33,7 +43,7 @@
       ink:PRESETS[0].ink, muted:PRESETS[0].muted, surface:PRESETS[0].surface, line:PRESETS[0].line,
       font:'serif', layout:'classic', avatar:46, spacing:19,
       showTime:false, showChannel:false,
-      messages:[], images:[], includedChannels:[], channelStyles:{}, chapters:{}, coverObjects:[]
+      messages:[], images:[], includedChannels:[], channelStyles:{}, channelRoles:{}, chapters:{}, coverObjects:[]
     };
   }
 
@@ -82,11 +92,17 @@
       muted:t.muted, surface:t.surface, line:t.line, font:t.font, layout:t.layout,
       avatar:46, spacing:19
     });
+    project.channelStyles = {};
+    channels().forEach(ch => {
+      const role = channelRole(ch.name);
+      project.channelStyles[ch.name] = {mode:'normal',color:CHANNEL_PALETTES[t.id][role]};
+    });
     syncDesignInputs();
     renderPresets();
+    renderChannels();
     renderBook();
     markChanged();
-    toast(t.name + ' 디자인을 적용했습니다.');
+    toast(t.name + ' 디자인과 채팅 색상 팔레트를 적용했습니다.');
   }
 
   function cssVars() {
@@ -147,49 +163,99 @@
     );
   }
 
+  function guessChannelRole(name) {
+    const n=String(name||'').toLowerCase();
+    if (/사담|잡담|ooc|out.of.character|雑談|수다|플톡|pl톡|chat/i.test(n)) return 'chat';
+    if (/정보|안내|공지|system|시스템|주사위|다이스|dice|자료|핸드아웃|handout/i.test(n)) return 'info';
+    if (/메인|main|본편|본채팅|롤플|rp|ロール|메인탭/i.test(n)) return 'main';
+    if (isPrivateChannel(n)) return 'chat';
+    return 'other';
+  }
+  function channelRole(name) {
+    return (project.channelRoles && project.channelRoles[name]) || guessChannelRole(name);
+  }
   function channelStyle(name) {
     const custom = project.channelStyles && project.channelStyles[name];
-    return custom || {mode:'normal',color:isPrivateChannel(name) ? '#dedede' : '#f3c9cd'};
+    const role = channelRole(name);
+    const palette = CHANNEL_PALETTES[project.preset] || CHANNEL_PALETTES.classic;
+    return custom || {mode:'normal',color:palette[role] || palette.other};
+  }
+  function setChannelColor(name,color) {
+    project.channelStyles[name] = {mode:channelStyle(name).mode,color:safeColor(color,'#e2e2e2')};
+    renderChannels();renderBook();markChanged();
   }
   function renderChannels() {
     const list = channels();
-    byId('channelList').innerHTML = list.length ? list.map(ch =>
-      '<label class="channel-item ' + (isPrivateChannel(ch.name) ? 'secret' : '') + '">' +
-      '<input type="checkbox" data-channel="' + esc(ch.name) + '" ' +
-      (project.includedChannels.includes(ch.name) ? 'checked' : '') + '>' +
-      '<span class="channel-name">' + esc(ch.name) + '</span><span class="channel-count">' +
-      number(ch.count) + '</span></label>' +
-      '<div class="channel-style-controls"><label>표시 <select data-style-channel="' + esc(ch.name) + '">' +
-      [['normal','배경색 구분'],['box','박스 + 테두리'],['line','왼쪽 색상선'],['muted','은은한 배경']].map(v =>
-        '<option value="' + v[0] + '"' + (channelStyle(ch.name).mode === v[0] ? ' selected' : '') + '>' + v[1] + '</option>').join('') +
-      '</select></label><label>색상 <input type="color" data-color-channel="' + esc(ch.name) + '" value="' +
-      safeColor(channelStyle(ch.name).color,'#dedede') + '"></label></div>'
-    ).join('') : '<p class="help-text">로그를 불러오면 채팅 목록이 표시됩니다.</p>';
-    byId('channelList').querySelectorAll('input').forEach(input => {
+    const palette = CHANNEL_PALETTES[project.preset] || CHANNEL_PALETTES.classic;
+    const roleOptions = ROLE_COLORS.map(role => '<option value="' + role + '">' + ROLE_NAMES[role] + '</option>').join('');
+    byId('channelList').innerHTML = list.length ? list.map(ch => {
+      const name = esc(ch.name), style = channelStyle(ch.name), role = channelRole(ch.name);
+      const copies = list.filter(other => other.name !== ch.name).map(other =>
+        '<option value="' + esc(other.name) + '">' + esc(other.name) + '</option>').join('');
+      const swatches = ROLE_COLORS.map(r =>
+        '<button type="button" class="channel-swatch" data-swatch-channel="' + name +
+        '" data-swatch-role="' + r + '" style="background:' + palette[r] +
+        '" title="' + ROLE_NAMES[r] + ' 추천 색상" aria-label="' + ROLE_NAMES[r] + ' 추천 색상"></button>').join('');
+      return '<div class="channel-config">' +
+        '<label class="channel-item ' + (isPrivateChannel(ch.name) ? 'secret' : '') + '">' +
+        '<input type="checkbox" data-channel="' + name + '" ' +
+        (project.includedChannels.includes(ch.name) ? 'checked' : '') + '>' +
+        '<span class="channel-name">' + name + '</span><span class="channel-count">' +
+        number(ch.count) + '</span></label>' +
+        '<div class="channel-role-row"><label>탭 역할 <select data-role-channel="' + name + '">' +
+        ROLE_COLORS.map(r => '<option value="' + r + '"' + (role===r?' selected':'') + '>' + ROLE_NAMES[r] + '</option>').join('') +
+        '</select></label><label>배경색 <input type="color" data-color-channel="' + name +
+        '" value="' + safeColor(style.color,palette[role]) + '"></label></div>' +
+        '<div class="channel-swatch-row"><span>추천</span>' + swatches + '</div>' +
+        '<div class="channel-copy-row"><select data-copy-source="' + name + '" aria-label="다른 탭 색상 선택">' +
+        '<option value="">다른 탭 색상 가져오기…</option>' + copies + '</select></div>' +
+        '<div class="channel-style-controls"><label>표시 <select data-style-channel="' + name + '">' +
+        [['normal','배경색 구분'],['box','박스 + 테두리'],['line','왼쪽 색상선'],['muted','은은한 배경']].map(v =>
+          '<option value="' + v[0] + '"' + (style.mode===v[0]?' selected':'') + '>' + v[1] + '</option>').join('') +
+        '</select></label><button type="button" class="channel-reset" data-reset-channel="' + name + '">추천색 복원</button></div>' +
+        '</div>';
+    }).join('') : '<p class="help-text">로그를 불러오면 채팅 목록이 표시됩니다.</p>';
+    byId('channelList').querySelectorAll('input[data-channel]').forEach(input => {
       input.addEventListener('change', () => {
-        const c = input.dataset.channel;
-        if (input.checked && !project.includedChannels.includes(c)) project.includedChannels.push(c);
-        if (!input.checked) project.includedChannels = project.includedChannels.filter(x => x !== c);
-        if (previewChannel !== '*' && !project.includedChannels.includes(previewChannel)) previewChannel = '*';
-        renderPreviewChannels();
-        renderBook();
-        markChanged();
+        const c=input.dataset.channel;
+        if(input.checked && !project.includedChannels.includes(c))project.includedChannels.push(c);
+        if(!input.checked)project.includedChannels=project.includedChannels.filter(x=>x!==c);
+        if(previewChannel!=='*'&&!project.includedChannels.includes(previewChannel))previewChannel='*';
+        renderPreviewChannels();renderBook();markChanged();
       });
     });
+    byId('channelList').querySelectorAll('[data-role-channel]').forEach(el => el.addEventListener('change', () => {
+      const name=el.dataset.roleChannel;
+      project.channelRoles[name]=el.value;
+      project.channelStyles[name]={mode:channelStyle(name).mode,color:palette[el.value]};
+      renderChannels();renderBook();markChanged();
+    }));
     byId('channelList').querySelectorAll('[data-style-channel]').forEach(el => el.addEventListener('change', () => {
-      const name = el.dataset.styleChannel;
-      project.channelStyles[name] = {mode:el.value,color:channelStyle(name).color};
+      const name=el.dataset.styleChannel;
+      project.channelStyles[name]={mode:el.value,color:channelStyle(name).color};
       renderBook();markChanged();
     }));
     byId('channelList').querySelectorAll('[data-color-channel]').forEach(el => el.addEventListener('input', () => {
-      const name = el.dataset.colorChannel;
-      project.channelStyles[name] = {mode:channelStyle(name).mode,color:el.value};
+      const name=el.dataset.colorChannel;
+      project.channelStyles[name]={mode:channelStyle(name).mode,color:el.value};
       renderBook();markChanged();
+    }));
+    byId('channelList').querySelectorAll('[data-swatch-channel]').forEach(el => el.addEventListener('click', () => {
+      setChannelColor(el.dataset.swatchChannel,palette[el.dataset.swatchRole]);
+    }));
+    byId('channelList').querySelectorAll('[data-copy-source]').forEach(el => el.addEventListener('change', () => {
+      if(!el.value)return;
+      setChannelColor(el.dataset.copySource,channelStyle(el.value).color);
+      toast('다른 탭의 배경색을 가져왔습니다.');
+    }));
+    byId('channelList').querySelectorAll('[data-reset-channel]').forEach(el => el.addEventListener('click', () => {
+      const name=el.dataset.resetChannel;
+      setChannelColor(name,palette[channelRole(name)]);
     }));
     renderPreviewChannels();
   }
 
-  function renderPreviewChannels() {
+    function renderPreviewChannels() {
     const sel = byId('previewChannel');
     const old = previewChannel;
     sel.innerHTML = '<option value="*">공개할 채팅 전체</option>' +
@@ -506,6 +572,7 @@
       if (!combined.length) throw new Error('대사 형식을 읽지 못했습니다. 코코포리아에서 내보낸 HTML인지 확인해 주세요.');
       project.messages = combined;
       project.channelStyles = {};
+      project.channelRoles = {};
       project.includedChannels = channels().filter(ch => !isPrivateChannel(ch.name)).map(ch => ch.name);
       selectedMessageId = null; selectedCoverId = null; previewChannel = '*';
       previewLimit = MAX_PREVIEW; showCover = true;
@@ -548,6 +615,10 @@
       time:String(m.time || ''), timestamp:String(m.timestamp || ''),
       system:!!m.system, hidden:!!m.hidden
     }));
+    p.channelRoles = {};
+    if (raw.channelRoles && typeof raw.channelRoles === 'object') for(const [name,role] of Object.entries(raw.channelRoles)) {
+      if(ROLE_COLORS.includes(role))p.channelRoles[String(name).slice(0,100)] = role;
+    }
     p.channelStyles = {};
     if (raw.channelStyles && typeof raw.channelStyles === 'object') for (const [name,style] of Object.entries(raw.channelStyles)) {
       if (style && typeof style === 'object') p.channelStyles[String(name).slice(0,100)] = {
