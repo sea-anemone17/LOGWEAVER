@@ -149,7 +149,7 @@
 
   function channelStyle(name) {
     const custom = project.channelStyles && project.channelStyles[name];
-    return custom || (isPrivateChannel(name) ? {mode:'box',color:'#8993a4'} : {mode:'normal',color:'#a37486'});
+    return custom || {mode:'normal',color:isPrivateChannel(name) ? '#222222' : '#c43b45'};
   }
   function renderChannels() {
     const list = channels();
@@ -163,7 +163,7 @@
       [['normal','기본 대사'],['box','구분 박스'],['line','왼쪽 색상선'],['muted','차분한 텍스트']].map(v =>
         '<option value="' + v[0] + '"' + (channelStyle(ch.name).mode === v[0] ? ' selected' : '') + '>' + v[1] + '</option>').join('') +
       '</select></label><label>색상 <input type="color" data-color-channel="' + esc(ch.name) + '" value="' +
-      safeColor(channelStyle(ch.name).color,'#8993a4') + '"></label></div>'
+      safeColor(channelStyle(ch.name).color,'#222222') + '"></label></div>'
     ).join('') : '<p class="help-text">로그를 불러오면 채팅 목록이 표시됩니다.</p>';
     byId('channelList').querySelectorAll('input').forEach(input => {
       input.addEventListener('change', () => {
@@ -241,7 +241,7 @@
     const id = Number(m.id);
     const style = channelStyle(m.channel);
     const mode = ['normal','box','line','muted'].includes(style.mode) ? style.mode : 'normal';
-    const accent = safeColor(style.color,'#8993a4');
+    const accent = safeColor(style.color,'#222222');
     if (m.system) {
       return '<div class="log-system channel-mode-' + mode + '" style="--channel-accent:' + accent + '" ' + (editable ? 'data-msg-id="' + id + '"' : '') + '>' + esc(m.text) + '</div>';
     }
@@ -251,10 +251,11 @@
       '<span class="log-avatar"' + (src ? ' style="background-image:url(&quot;' + src + '&quot;)"' : '') + '>' +
       (src ? '' : '✦') + '</span>';
     const color = safeColor(m.color, project.accent);
+    const dialogueColor = safeColor(style.color, project.ink);
     const time = project.showTime && m.time ? '<span class="log-time">' + esc(m.time) + '</span>' : '';
     const channel = project.showChannel ? '<span class="log-channel">' + esc(m.channel) + '</span>' : '';
     return '<article class="log-row channel-mode-' + mode + ' ' + (editable && selectedMessageId === id ? 'is-selected' : '') +
-      '" style="--speaker:' + color + ';--channel-accent:' + accent + '" ' + (editable ? 'data-editable="true" data-msg-id="' + id + '"' : '') + '>' +
+      '" style="--speaker:' + color + ';--channel-accent:' + accent + ';--dialogue-color:' + dialogueColor + '" ' + (editable ? 'data-editable="true" data-msg-id="' + id + '"' : '') + '>' +
       avatar + '<div class="log-main"><div class="log-header"><span class="log-name">' +
       esc(m.speaker || '시스템') + '</span>' + time + channel + '</div>' +
       '<div class="log-text">' + esc(m.text) + '</div></div></article>';
@@ -552,7 +553,7 @@
     if (raw.channelStyles && typeof raw.channelStyles === 'object') for (const [name,style] of Object.entries(raw.channelStyles)) {
       if (style && typeof style === 'object') p.channelStyles[String(name).slice(0,100)] = {
         mode:['normal','box','line','muted'].includes(style.mode) ? style.mode : 'normal',
-        color:safeColor(style.color,'#8993a4')
+        color:safeColor(style.color,'#222222')
       };
     }
     p.chapters = raw.chapters && typeof raw.chapters === 'object' ? raw.chapters : {};
