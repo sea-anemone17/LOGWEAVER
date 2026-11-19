@@ -451,9 +451,16 @@
     const shown = filtered.slice(0, previewLimit);
     const rows = shown.map(m =>
       (project.chapters[m.id] ? chapterHtml(project.chapters[m.id]) : '') +
-      messageHtml(m, true, false)
+      messageHtml(m, true, true)
     ).join('');
-    const markup = '<div class="book-root" id="previewBook" data-layout="' + esc(project.layout) + '" style="' +
+    // Reuse the large JSON image once per icon rather than repeating its Base64
+    // payload in every chat message's inline style.
+    const visibleIcons = new Set(shown.filter(m => imageFor(m)).map(m => m.icon));
+    const visibleIconStyles = [...visibleIcons].map(id =>
+      '.book-root .icon-' + id + '{background-image:url("' + project.images[id] + '")}'
+    ).join('\n');
+    const markup = '<style id="preview-icon-styles">' + visibleIconStyles + '</style>' +
+      '<div class="book-root" id="previewBook" data-layout="' + esc(project.layout) + '" style="' +
       esc(cssVars()) + '">' + (showCover ? coverHtml(true) : '') +
       (showCover && project.preface ? '<div class="book-preface">' + esc(project.preface) + '</div>' : '') +
       '<div class="book-messages">' +
@@ -582,6 +589,48 @@
     return copy.textContent.replace(/\r\n/g, '\n').trim();
   }
 
+
+  function parseCocofoliaJson(raw, imageIds) {
+    // COCOfolia JSON log: messages[] and images{imageHash: data:image/...;base64,...}.
+    if (!raw || !Array.isArray(raw.messages) || !raw.images ||
+        typeof raw.images !== 'object' || Array.isArray(raw.images))
+      throw new Error('코코포리아 JSON 로그 형식이 아닙니다. LOGWEAVER 백업은 복원 버튼을 이용해 주세요.');
+
+    const resolvedImages = new Map();
+    const resolveImage = hash => {
+      if (typeof hash !== 'string' || !Object.prototype.hasOwnProperty.call(raw.images, hash)) return -1;
+      if (resolvedImages.has(hash)) return resolvedImages.get(hash);
+      const src = raw.images[hash];
+      if (!validImage(src)) { resolvedImages.set(hash, -1); return -1; }
+      if (!imageIds.has(src)) {
+        imageIds.set(src, project.images.length);
+        project.images.push(src);
+      }
+      const id = imageIds.get(src);
+      resolvedImages.set(hash, id);
+      return id;
+    };
+    return raw.messages.filter(m => m && typeof m === 'object' && !Array.isArray(m)).map((m, index) => {
+      const createdAt = Number(m.createdAt);
+      const hasTime = Number.isFinite(createdAt) && createdAt > 0 && createdAt < 8.64e15;
+      const date = hasTime ? new Date(createdAt) : null;
+      const roll = m.extend && typeof m.extend === 'object' && m.extend.roll;
+      const result = roll && roll.secret !== true && typeof roll.result === 'string' ? roll.result.trim() : '';
+      const originalText = String(m.text ?? '');
+      return {
+        id:index, channel:String(m.channelName || m.channel || '메인').slice(0,100),
+        speaker:String(m.name || '').trim().slice(0,300),
+        text:originalText + (result && !originalText.includes(result) ? '\n' + result : ''),
+        color:safeColor(m.color, project.accent),
+        icon:resolveImage(m.iconImage),
+        time:date ? date.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',hour12:false}) : '',
+        timestamp:date ? date.toISOString() : '',
+        system:m.type === 'system' || !m.name,
+        hidden:false
+      };
+    });
+  }
+
   function parseLog(html, fallbackChannel, imageIds) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const avatarMap = extractAvatarMap(doc);
@@ -637,7 +686,7 @@
   }
 
   function titleFromFilename(name) {
-    return name.replace(/^.*[/\\]/, '').replace(/\.(zip|html?|htm)$/i,'')
+    return name.replace(/^.*[/\\]/, '').replace(/\.(zip|json|html?|htm)$/i,'')
       .replace(/_html_log(?:\s*\(\d+\))?/i,'').replace(/\[(すべて|전체|all)\]/gi,'')
       .replace(/\s+/g,' ').trim() || '새 로그북';
   }
@@ -646,35 +695,40 @@
     return m ? m[1].trim() : '메인';
   }
 
+
   async function handleSourceFiles(files) {
     if (!files.length) return;
     byId('saveStatus').textContent = '로그 분석 중…';
-    const htmlFiles = [];
+    const logFiles = [];
     try {
       for (const file of files) {
         if (/\.zip$/i.test(file.name)) {
           if (!window.JSZip) throw new Error('ZIP 읽기 라이브러리가 로딩되지 않았습니다. 인터넷 연결을 확인해 주세요.');
           const zip = await JSZip.loadAsync(file);
           for (const [name, entry] of Object.entries(zip.files)) {
-            if (!entry.dir && /\.html?$/i.test(name) && !name.startsWith('__MACOSX/'))
-              htmlFiles.push({name, entry, zip:true});
+            if (!entry.dir && /\.(?:html?|json)$/i.test(name) && !name.startsWith('__MACOSX/'))
+              logFiles.push({name, entry, zip:true, json:/\.json$/i.test(name)});
           }
-        } else if (/\.html?$/i.test(file.name)) {
-          htmlFiles.push({name:file.name, entry:file, zip:false});
+        } else if (/\.(?:html?|json)$/i.test(file.name)) {
+          logFiles.push({name:file.name, entry:file, zip:false, json:/\.json$/i.test(file.name)});
         }
       }
-      if (!htmlFiles.length) throw new Error('ZIP 안에서 HTML 로그를 찾지 못했습니다.');
-      const aggregate = htmlFiles.find(f => /\[(?:すべて|전체|all)\]/i.test(f.name));
-      const chosen = aggregate ? [aggregate] : htmlFiles;
+      if (!logFiles.length) throw new Error('HTML 또는 JSON 로그를 찾지 못했습니다.');
+      // Prefer JSON when both are in one export: it carries the full inline images
+      // and avoids importing the same session twice.
+      const preferred = logFiles.some(f => f.json) ? logFiles.filter(f => f.json) : logFiles;
+      const aggregate = preferred.find(f => /\[(?:すべて|전체|all)\]/i.test(f.name));
+      const chosen = aggregate ? [aggregate] : preferred;
       const next = freshProject();
       next.title = titleFromFilename(aggregate ? aggregate.name : files[0].name);
       closeAvatarViewer();
       project = next;
       const imageIds = new Map(), combined = [];
       for (const file of chosen) {
-        const html = file.zip ? await file.entry.async('string') : await file.entry.text();
-        const fallback = channelFromFilename(file.name);
-        const part = parseLog(html, fallback, imageIds);
+        const data = file.zip ? await file.entry.async('string') : await file.entry.text();
+        const part = file.json
+          ? parseCocofoliaJson(JSON.parse(data), imageIds)
+          : parseLog(data, channelFromFilename(file.name), imageIds);
         for (const m of part) { m.id = combined.length; combined.push(m); }
       }
       if (!aggregate && chosen.length > 1) {
@@ -686,7 +740,7 @@
         });
         combined.forEach((m,i) => { m.id = i; delete m._order; });
       }
-      if (!combined.length) throw new Error('대사 형식을 읽지 못했습니다. 코코포리아에서 내보낸 HTML인지 확인해 주세요.');
+      if (!combined.length) throw new Error('대사 형식을 읽지 못했습니다. 코코포리아 내보내기 파일인지 확인해 주세요.');
       project.messages = combined;
       project.channelStyles = {};
       project.channelRoles = {};
@@ -697,7 +751,7 @@
       clearInspector();
       syncProjectInputs(); syncDesignInputs(); renderPresets(); renderChannels(); renderBook(); renderHidden();
       markChanged();
-      toast(number(combined.length) + '개 대사를 가져왔습니다. ✦');
+      toast(number(combined.length) + '개 대사를 가져왔습니다. 이미지 ' + number(project.images.length) + '장 ✦');
     } catch (e) {
       console.error(e);
       toast('불러오기 실패: ' + e.message);
