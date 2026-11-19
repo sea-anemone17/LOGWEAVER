@@ -101,7 +101,7 @@ body.avatar-viewer-open{overflow:hidden}
   <div class="project-identity"><span class="project-indicator"></span><span id="topProjectName">새 로그북</span><span class="autosave-label" id="saveStatus">로컬 프로젝트</span></div>
   <div class="top-actions">
     <button class="btn quiet" id="newProjectBtn">새 프로젝트</button>
-    <label class="btn quiet file-control" title="코코포리아 내보내기 HTML·ZIP">＋ 로그 불러오기<input id="sourceInput" type="file" accept=".zip,.html,.htm" multiple></label>
+    <label class="btn quiet file-control" title="코코포리아 내보내기 JSON·HTML·ZIP">＋ 로그 불러오기<input id="sourceInput" type="file" accept=".zip,.json,.html,.htm" multiple></label>
     <button class="btn quiet" id="backupBtn">백업</button>
     <label class="btn quiet file-control" title="LOGWEAVER JSON 백업">복원<input id="restoreInput" type="file" accept=".json"></label>
     <button class="btn primary" id="exportBtn">↗ 공유용 HTML</button>
@@ -171,7 +171,7 @@ body.avatar-viewer-open{overflow:hidden}
       <div class="canvas-label"><strong>LIVE PREVIEW</strong><span id="messageCount">아직 불러온 로그가 없습니다.</span></div>
       <div class="preview-tools"><input id="searchInput" type="search" placeholder="대사·캐릭터 검색" aria-label="대사 검색"><select id="previewChannel" aria-label="미리보기 채팅 필터"><option value="*">공개할 채팅 전체</option></select><button id="toggleCoverBtn" class="btn tiny ghost">표지 접기</button></div>
     </div>
-    <div id="onboarding" class="onboarding"><div class="onboarding-icon">✦</div><h2>당신의 세션을, 하나의 작품으로.</h2><p>코코포리아에서 내보낸 ZIP 또는 HTML을 올리면<br>대사와 캐릭터 아이콘을 그대로 불러옵니다.</p><label class="btn primary big file-control">＋ 첫 로그 불러오기<input id="welcomeInput" type="file" accept=".zip,.html,.htm" multiple></label><small>프로젝트는 이 브라우저에서 작업됩니다.</small></div>
+    <div id="onboarding" class="onboarding"><div class="onboarding-icon">✦</div><h2>당신의 세션을, 하나의 작품으로.</h2><p>코코포리아에서 내보낸 JSON·ZIP·HTML을 올리면<br>대사와 캐릭터 이미지를 불러옵니다. JSON에는 스탠딩 이미지도 포함될 수 있습니다.</p><label class="btn primary big file-control">＋ 첫 로그 불러오기<input id="welcomeInput" type="file" accept=".zip,.json,.html,.htm" multiple></label><small>프로젝트는 이 브라우저에서 작업됩니다.</small></div>
     <div id="bookViewport" class="book-viewport" hidden><div id="bookMount"></div><div class="load-footer"><button id="loadMoreBtn" class="btn ghost" hidden>이어서 보기 ↓</button></div></div>
   </main>
   <aside class="inspector" id="inspector">
