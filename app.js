@@ -451,9 +451,16 @@
     const shown = filtered.slice(0, previewLimit);
     const rows = shown.map(m =>
       (project.chapters[m.id] ? chapterHtml(project.chapters[m.id]) : '') +
-      messageHtml(m, true, false)
+      messageHtml(m, true, true)
     ).join('');
-    const markup = '<div class="book-root" id="previewBook" data-layout="' + esc(project.layout) + '" style="' +
+    // Reuse the large JSON image once per icon rather than repeating its Base64
+    // payload in every chat message's inline style.
+    const visibleIcons = new Set(shown.filter(m => imageFor(m)).map(m => m.icon));
+    const visibleIconStyles = [...visibleIcons].map(id =>
+      '.book-root .icon-' + id + '{background-image:url("' + project.images[id] + '")}'
+    ).join('\n');
+    const markup = '<style id="preview-icon-styles">' + visibleIconStyles + '</style>' +
+      '<div class="book-root" id="previewBook" data-layout="' + esc(project.layout) + '" style="' +
       esc(cssVars()) + '">' + (showCover ? coverHtml(true) : '') +
       (showCover && project.preface ? '<div class="book-preface">' + esc(project.preface) + '</div>' : '') +
       '<div class="book-messages">' +
@@ -608,7 +615,7 @@
       const hasTime = Number.isFinite(createdAt) && createdAt > 0 && createdAt < 8.64e15;
       const date = hasTime ? new Date(createdAt) : null;
       const roll = m.extend && typeof m.extend === 'object' && m.extend.roll;
-      const result = roll && typeof roll.result === 'string' ? roll.result.trim() : '';
+      const result = roll && roll.secret !== true && typeof roll.result === 'string' ? roll.result.trim() : '';
       const originalText = String(m.text ?? '');
       return {
         id:index, channel:String(m.channelName || m.channel || '메인').slice(0,100),
