@@ -30,6 +30,8 @@
 .book-root .book-messages{padding:24px clamp(17px,5%,60px) 72px;max-width:940px;margin:0 auto}
 .book-root .log-row{display:flex;gap:15px;padding:var(--spacing) 0;border-bottom:1px solid var(--line);position:relative}
 .book-root .log-avatar{width:var(--avatar);height:var(--avatar);min-width:var(--avatar);border-radius:calc(var(--radius) * .75);background-size:cover;background-position:center;background-color:var(--surface);display:grid;place-items:center;color:var(--muted);font-family:system-ui,sans-serif;overflow:hidden}
+.book-root .log-avatar.avatar-button{appearance:none;border:0;padding:0;cursor:zoom-in;flex-shrink:0;image-rendering:auto;transition:box-shadow .16s}
+.book-root .log-avatar.avatar-button:hover,.book-root .log-avatar.avatar-button:focus-visible{box-shadow:0 0 0 2px var(--accent);outline:none}
 .book-root .log-main{flex:1;min-width:0}
 .book-root .log-header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:7px}
 .book-root .log-name{font:700 13px/1.5 system-ui,sans-serif;color:var(--speaker,var(--accent))}
@@ -61,6 +63,33 @@
 .book-root .book-empty{padding:75px 25px;text-align:center;color:var(--muted);font-size:13px}
 @media(max-width:600px){.book-root .book-cover{min-height:290px}.book-root .book-messages{padding:12px 17px 50px}.book-root .log-row{gap:10px}.book-root .log-header{gap:5px}.book-root .log-text{font-size:13px}}
 @media print{.book-root{print-color-adjust:exact;-webkit-print-color-adjust:exact}.book-root .book-cover{break-after:page;min-height:95vh}.book-root .log-row,.book-root .log-system{break-inside:avoid}.book-root .book-chapter{break-before:page}}
+</style>
+<style id="avatar-viewer-style">
+body.avatar-viewer-open{overflow:hidden}
+.avatar-viewer{position:fixed;inset:0;z-index:1000;background:rgba(12,10,17,.88);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px);color:#f5edf3;font-family:Inter,Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
+.avatar-viewer[hidden]{display:none!important}
+.avatar-viewer-panel{width:min(820px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;background:#27222d;border:1px solid #5b485c;border-radius:15px;box-shadow:0 24px 90px #000a;overflow:hidden}
+.avatar-viewer-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid #4c3f4e}
+.avatar-viewer-header h2{font-size:16px;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar-viewer-close{border:1px solid #625066;border-radius:8px;color:#f6e9f3;background:#39303e;padding:8px 12px;flex-shrink:0;cursor:pointer}
+.avatar-viewer-stage{min-height:160px;flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:20px;background:repeating-conic-gradient(#302b34 0% 25%,#39323e 0% 50%) 50%/24px 24px}
+.avatar-viewer-stage img{display:block;max-width:100%;max-height:min(68dvh,640px);width:auto;height:auto;object-fit:contain;image-rendering:auto}
+.avatar-viewer-details{padding:12px 18px 3px;display:flex;flex-direction:column;gap:5px}
+.avatar-viewer-resolution{font-size:12px;color:#e4c9db}
+.avatar-viewer-hint{font-size:11px;line-height:1.6;color:#b6a7ba}
+.avatar-viewer-tools,.avatar-editor-controls{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px}
+.avatar-editor-controls{padding-top:0;border-top:1px solid #423846;margin-top:4px;padding-top:12px}
+.avatar-viewer .avatar-tool{font-size:12px;border:1px solid #68536a;background:#413246;color:#f5e6f0;border-radius:8px;padding:9px 12px;min-height:36px;cursor:pointer}
+.avatar-viewer .avatar-tool:hover{background:#55405a}
+.avatar-viewer .avatar-tool[aria-pressed=true]{background:#aa7596;border-color:#d5a1bb;color:#1e1820}
+.avatar-viewer .avatar-tool:disabled{opacity:.43;cursor:not-allowed}
+.avatar-viewer .avatar-tool:focus-visible{outline:2px solid #f2bdd4;outline-offset:2px}
+.avatar-editor-controls input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.avatar-editor-controls .avatar-upload{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.avatar-editor-controls .avatar-upload:focus-within{outline:2px solid #f2bdd4;outline-offset:2px}
+.avatar-editor-controls .avatar-remove{background:transparent;color:#e5b2c9}
+@media(max-width:600px){.avatar-viewer{padding:8px}.avatar-viewer-panel{max-height:calc(100dvh - 16px)}.avatar-viewer-stage{padding:12px}.avatar-viewer-stage img{max-height:55dvh}.avatar-viewer-header{padding:12px}.avatar-viewer-tools,.avatar-editor-controls{padding:10px 12px}.avatar-viewer-details{padding:10px 12px 0}}
+@media print{.avatar-viewer{display:none!important}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
 <script src="./app.js" defer></script>
@@ -150,6 +179,16 @@
     <div id="inspectorEmpty"><div class="hint-symbol">✳</div><h3>미리보기를 편집하세요</h3><p>대사를 클릭하면 수정하거나 숨길 수 있습니다. 표지 장식은 마우스나 손가락으로 움직일 수 있습니다.</p><div class="guide-steps"><span>01 · 파일 불러오기</span><span>02 · 프리셋 선택</span><span>03 · 실수한 대사 숨기기</span><span>04 · HTML 내보내기</span></div></div>
     <div id="inspectorMessage" hidden><h3>대사 편집</h3><div id="editCharacter" class="edit-character"></div><label for="editMessageText">대사 내용</label><textarea id="editMessageText" rows="8"></textarea><div id="editMessageChannel" class="edit-detail"></div><button id="saveMessageBtn" class="btn primary full">수정 내용 저장</button><button id="hideMessageBtn" class="btn danger full">이 대사 숨기기</button><button id="addChapterBtn" class="btn ghost full">이 앞에 장면 제목 넣기</button><button id="removeChapterBtn" class="btn ghost full" hidden>이 장면 제목 삭제</button><button id="closeInspectorBtn" class="btn text-button full">선택 해제</button></div>
   </aside>
+</div>
+
+<div id="avatarViewer" class="avatar-viewer" role="dialog" aria-modal="true" aria-labelledby="avatarViewerTitle" hidden>
+  <div class="avatar-viewer-panel">
+    <div class="avatar-viewer-header"><h2 id="avatarViewerTitle">캐릭터 이미지</h2><button type="button" id="avatarViewerClose" class="avatar-viewer-close" aria-label="이미지 뷰어 닫기">닫기 ✕</button></div>
+    <div class="avatar-viewer-stage"><img id="avatarViewerImage" alt="캐릭터 이미지"></div>
+    <div class="avatar-viewer-details"><span id="avatarViewerResolution" class="avatar-viewer-resolution"></span><span id="avatarViewerHint" class="avatar-viewer-hint"></span></div>
+    <div class="avatar-viewer-tools"><button type="button" id="avatarOriginalBtn" class="avatar-tool" aria-pressed="true">원본 아이콘</button><button type="button" id="avatarStandingBtn" class="avatar-tool" aria-pressed="false">고화질 스탠딩</button></div>
+    <div class="avatar-editor-controls"><label class="avatar-tool avatar-upload">스탠딩 이미지 등록 / 교체<input id="standingInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" aria-label="고화질 스탠딩 이미지 선택"></label><button type="button" id="avatarRemoveStandingBtn" class="avatar-tool avatar-remove">등록 이미지 삭제</button></div>
+  </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </div>
