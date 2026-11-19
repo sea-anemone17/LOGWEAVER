@@ -798,6 +798,83 @@
     } catch (e) { toast('복원 실패: ' + e.message); }
   }
 
+
+  function exportAvatarViewerScript() {
+    // Generated logbooks are standalone: no editor state or external JS required.
+    return `
+(function () {
+  'use strict';
+  const viewer = document.getElementById('avatarViewer');
+  const img = document.getElementById('avatarViewerImage');
+  const title = document.getElementById('avatarViewerTitle');
+  const resolution = document.getElementById('avatarViewerResolution');
+  const hint = document.getElementById('avatarViewerHint');
+  const originalBtn = document.getElementById('avatarOriginalBtn');
+  const standingBtn = document.getElementById('avatarStandingBtn');
+  const assets = JSON.parse(document.getElementById('avatarAssets').textContent);
+  let original = '', standing = '', useStanding = false, opener = null, character = '';
+
+  function render() {
+    const src = useStanding && standing ? standing : original;
+    const isStanding = useStanding && !!standing;
+    originalBtn.setAttribute('aria-pressed', String(!isStanding));
+    standingBtn.setAttribute('aria-pressed', String(isStanding));
+    standingBtn.disabled = !standing;
+    img.alt = character + (isStanding ? ' 스탠딩 이미지' : ' 원본 아이콘');
+    resolution.textContent = '이미지 크기 확인 중…';
+    hint.textContent = '';
+    img.onload = () => {
+      if (img.getAttribute('src') !== src) return;
+      const w = img.naturalWidth, h = img.naturalHeight;
+      resolution.textContent = (isStanding ? '등록 스탠딩' : '코코포리아 원본 아이콘') + ' · ' + w + ' × ' + h + 'px';
+      hint.textContent = isStanding
+        ? '원본 이미지 해상도로 표시합니다. 화면에 맞게 축소될 수 있습니다.'
+        : Math.min(w, h) < 300
+          ? '작은 원본 아이콘은 크게 확대할수록 흐릿할 수 있습니다.'
+          : '원본 이미지의 실제 해상도를 확인할 수 있습니다.';
+    };
+    img.onerror = () => { if (img.getAttribute('src') === src) resolution.textContent = '이미지 표시 실패'; };
+    img.src = src;
+  }
+
+  function close() {
+    if (viewer.hidden) return;
+    viewer.hidden = true;
+    document.body.classList.remove('avatar-viewer-open');
+    img.removeAttribute('src');
+    if (opener && opener.isConnected) opener.focus();
+    opener = null;
+  }
+
+  document.querySelectorAll('.book-root .avatar-button[data-avatar-id]').forEach(button => {
+    button.addEventListener('click', () => {
+      const background = getComputedStyle(button).backgroundImage;
+      const start = background.indexOf('data:image/');
+      const end = background.lastIndexOf(')');
+      original = start >= 0 && end > start
+        ? background.slice(start, end).replaceAll('"', '').replaceAll("'", '')
+        : '';
+      if (!original.startsWith('data:image/')) return;
+      standing = assets[button.dataset.avatarId] || '';
+      useStanding = !!standing;
+      opener = button;
+      character = (button.closest('.log-row')?.querySelector('.log-name')?.textContent || '캐릭터').trim();
+      title.textContent = character + ' · 캐릭터 이미지';
+      viewer.hidden = false;
+      document.body.classList.add('avatar-viewer-open');
+      render();
+      document.getElementById('avatarViewerClose').focus();
+    });
+  });
+  originalBtn.addEventListener('click', () => { useStanding = false; render(); });
+  standingBtn.addEventListener('click', () => { if (standing) { useStanding = true; render(); } });
+  document.getElementById('avatarViewerClose').addEventListener('click', close);
+  viewer.addEventListener('click', event => { if (event.target === viewer) close(); });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+})();
+`;
+  }
+
   function exportHTML() {
     if (!project.messages.length) return toast('먼저 로그 파일을 불러와 주세요.');
     const rows = includedMessageList();
@@ -807,6 +884,18 @@
       '.book-root .icon-' + id + '{background-image:url("' + project.images[id] + '")}'
     ).join('\n');
     const bookCss = byId('book-style').textContent.replace(/<\/style/gi,'');
+    const viewerCss = byId('avatar-viewer-style').textContent.replace(/<\/style/gi,'');
+    const standingsToShare = {};
+    icons.forEach(id => {
+      const standing = standingFor(id);
+      if (standing) standingsToShare[id] = standing;
+    });
+    const avatarViewer = byId('avatarViewer').cloneNode(true);
+    avatarViewer.hidden = true;
+    avatarViewer.querySelector('.avatar-editor-controls').remove();
+    avatarViewer.querySelector('#avatarViewerImage').removeAttribute('src');
+    avatarViewer.querySelector('#avatarViewerResolution').textContent = '';
+    avatarViewer.querySelector('#avatarViewerHint').textContent = '';
     const sharedCss = '*{box-sizing:border-box}body{margin:0;background:#201e24;font-family:system-ui,sans-serif}' +
       '.share-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 20px;background:#26212b;color:#f0dfeb;font-size:12px;position:sticky;top:0;z-index:3}' +
       '.share-toolbar button{background:#ac7898;border:0;border-radius:7px;padding:8px 13px;color:#261b27;cursor:pointer}' +
@@ -816,7 +905,7 @@
     const html = '<!doctype html><html lang="ko"><head><meta charset="utf-8">' +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
       '<title>' + esc(project.title || 'LOGWEAVER') + '</title><style>' + bookCss + '\n' +
-      sharedCss + '\n' + iconStyles + '</style></head><body>' +
+      viewerCss + '\n' + sharedCss + '\n' + iconStyles + '</style></head><body>' +
       '<div class="share-toolbar"><span>✦ ' + esc(project.title) +
       ' · LOGWEAVER</span><button onclick="window.print()">인쇄 / PDF 저장</button></div>' +
       '<main class="share-container"><div class="book-root" data-layout="' + esc(project.layout) +
@@ -824,7 +913,10 @@
       (project.preface ? '<div class="book-preface">' + esc(project.preface) + '</div>' : '') +
       '<div class="book-messages">' + content + '</div>' +
       (project.postface ? '<div class="book-postface">' + esc(project.postface) + '</div>' : '') +
-      '<div class="book-end">✦ FIN ✦</div></div></main></body></html>';
+      '<div class="book-end">✦ FIN ✦</div></div></main>' +
+      avatarViewer.outerHTML +
+      '<script id="avatarAssets" type="application/json">' + JSON.stringify(standingsToShare) + '</script>' +
+      '<script>' + exportAvatarViewerScript() + '</script></body></html>';
     downloadText(html, (project.title || 'LOGWEAVER') + '_logbook.html', 'text/html;charset=utf-8');
     toast(number(rows.length) + '개 공개 대사만 포함해 HTML을 저장했습니다.');
   }
