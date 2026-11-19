@@ -37,13 +37,13 @@
 
   function freshProject() {
     return {
-      schema:2, title:'새 로그북', subtitle:'우리의 이야기를 기록하다', author:'',
+      schema:3, title:'새 로그북', subtitle:'우리의 이야기를 기록하다', author:'',
       preface:'', postface:'', coverImage:'',
       preset:'classic', paper:PRESETS[0].paper, accent:PRESETS[0].accent, 
       ink:PRESETS[0].ink, muted:PRESETS[0].muted, surface:PRESETS[0].surface, line:PRESETS[0].line,
       font:'serif', layout:'classic', avatar:46, spacing:19,
       showTime:false, showChannel:false,
-      messages:[], images:[], includedChannels:[], channelStyles:{}, channelRoles:{}, chapters:{}, coverObjects:[]
+      messages:[], images:[], standings:{}, includedChannels:[], channelStyles:{}, channelRoles:{}, chapters:{}, coverObjects:[]
     };
   }
 
@@ -51,6 +51,7 @@
   let currentPanel = 'templates', previewChannel = '*', previewLimit = MAX_PREVIEW;
   let selectedMessageId = null, selectedCoverId = null, showCover = true;
   let saveTimer = null, toastTimer = null, dbHandle = null, saveBusy = false;
+  let activeAvatarId = -1, activeAvatarName = '', viewerUseStanding = false, viewerReturnFocus = null;
 
   function toast(message) {
     const el = byId('toast');
@@ -303,6 +304,114 @@
     return validImage(src) ? src : '';
   }
 
+
+  function standingFor(iconId) {
+    const src = project.standings && project.standings[String(iconId)];
+    return validImage(src) ? src : '';
+  }
+
+  function renderAvatarViewer() {
+    if (activeAvatarId < 0) return;
+    const original = project.images[activeAvatarId];
+    if (!validImage(original)) return closeAvatarViewer();
+    const standing = standingFor(activeAvatarId);
+    if (!standing) viewerUseStanding = false;
+    const source = viewerUseStanding ? standing : original;
+    byId('avatarViewerTitle').textContent = activeAvatarName + ' · 캐릭터 이미지';
+    byId('avatarOriginalBtn').setAttribute('aria-pressed', String(!viewerUseStanding));
+    byId('avatarStandingBtn').setAttribute('aria-pressed', String(viewerUseStanding));
+    byId('avatarStandingBtn').disabled = !standing;
+    byId('avatarRemoveStandingBtn').disabled = !standing;
+    const img = byId('avatarViewerImage');
+    byId('avatarViewerResolution').textContent = '이미지 크기 확인 중…';
+    byId('avatarViewerHint').textContent = '';
+    img.alt = activeAvatarName + (viewerUseStanding ? ' 스탠딩 이미지' : ' 원본 아이콘');
+    img.onload = () => {
+      if (img.getAttribute('src') !== source) return;
+      const w = img.naturalWidth, h = img.naturalHeight;
+      byId('avatarViewerResolution').textContent = (viewerUseStanding ? '등록 스탠딩' : '코코포리아 원본 아이콘') +
+        ' · ' + w + ' × ' + h + 'px';
+      byId('avatarViewerHint').textContent = viewerUseStanding
+        ? '원본 이미지의 해상도를 유지해 표시합니다. 화면 크기에 맞게 축소될 수 있습니다.'
+        : Math.min(w,h) < 300
+          ? '원본 해상도가 낮아 크게 보면 흐릿해질 수 있습니다. 선명한 스탠딩을 보려면 원본 이미지를 등록해 주세요.'
+          : '아이콘을 원본 해상도로 읽었습니다. 이미지 자체보다 크게 확대하면 선명도가 떨어질 수 있습니다.';
+    };
+    img.onerror = () => {
+      if (img.getAttribute('src') === source) byId('avatarViewerResolution').textContent = '이미지를 표시할 수 없습니다.';
+    };
+    img.src = source;
+  }
+
+  function openAvatarViewer(iconId, trigger) {
+    if (!Number.isInteger(iconId) || !validImage(project.images[iconId])) return;
+    activeAvatarId = iconId;
+    activeAvatarName = (trigger.closest('.log-row')?.querySelector('.log-name')?.textContent || '캐릭터').trim();
+    viewerUseStanding = !!standingFor(iconId);
+    viewerReturnFocus = trigger;
+    byId('avatarViewer').hidden = false;
+    document.body.classList.add('avatar-viewer-open');
+    renderAvatarViewer();
+    byId('avatarViewerClose').focus();
+  }
+
+  function closeAvatarViewer() {
+    if (byId('avatarViewer').hidden) return;
+    byId('avatarViewer').hidden = true;
+    document.body.classList.remove('avatar-viewer-open');
+    byId('avatarViewerImage').removeAttribute('src');
+    activeAvatarId = -1;
+    if (viewerReturnFocus && viewerReturnFocus.isConnected) viewerReturnFocus.focus();
+    viewerReturnFocus = null;
+  }
+
+  function wireAvatarViewer() {
+    byId('avatarViewerClose').addEventListener('click', closeAvatarViewer);
+    byId('avatarViewer').addEventListener('click', event => {
+      if (event.target === byId('avatarViewer')) closeAvatarViewer();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !byId('avatarViewer').hidden) closeAvatarViewer();
+    });
+    byId('avatarOriginalBtn').addEventListener('click', () => {
+      viewerUseStanding = false; renderAvatarViewer();
+    });
+    byId('avatarStandingBtn').addEventListener('click', () => {
+      if (standingFor(activeAvatarId)) { viewerUseStanding = true; renderAvatarViewer(); }
+    });
+    byId('avatarRemoveStandingBtn').addEventListener('click', () => {
+      if (activeAvatarId < 0 || !standingFor(activeAvatarId)) return;
+      if (!confirm('이 아이콘에 연결된 스탠딩 이미지를 제거하시겠습니까?')) return;
+      delete project.standings[String(activeAvatarId)];
+      viewerUseStanding = false; renderAvatarViewer(); markChanged();
+      toast('등록된 스탠딩을 삭제했습니다.');
+    });
+    byId('standingInput').addEventListener('change', event => {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file || activeAvatarId < 0) return;
+      if (!/^image\/(?:png|jpeg|webp|gif)$/.test(file.type))
+        return toast('PNG, JPG, WEBP, GIF 이미지만 지원합니다.');
+      if (file.size > 12 * 1024 * 1024)
+        return toast('스탠딩 이미지는 12MB 이하로 선택해 주세요.');
+      const targetProject = project, targetIcon = activeAvatarId;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (project !== targetProject || !validImage(reader.result)) {
+          return toast('이미지를 등록할 수 없습니다. 현재 프로젝트를 확인해 주세요.');
+        }
+        project.standings[String(targetIcon)] = reader.result;
+        if (activeAvatarId === targetIcon && !byId('avatarViewer').hidden) {
+          viewerUseStanding = true; renderAvatarViewer();
+        }
+        markChanged();
+        toast('고해상도 스탠딩을 등록했습니다. JSON 백업도 권장합니다.');
+      };
+      reader.onerror = () => toast('이미지 파일을 읽지 못했습니다.');
+      reader.readAsDataURL(file);
+    });
+  }
+
   function messageHtml(m, editable, assetClass) {
     const id = Number(m.id);
     const style = channelStyle(m.channel);
@@ -312,10 +421,11 @@
       return '<div class="log-system channel-mode-' + mode + '" style="--channel-accent:' + accent + '" ' + (editable ? 'data-msg-id="' + id + '"' : '') + '>' + esc(m.text) + '</div>';
     }
     const src = imageFor(m);
-    const avatar = assetClass && src ?
-      '<span class="log-avatar icon-' + m.icon + '"></span>' :
-      '<span class="log-avatar"' + (src ? ' style="background-image:url(&quot;' + src + '&quot;)"' : '') + '>' +
-      (src ? '' : '✦') + '</span>';
+    const avatar = src ?
+      '<button type="button" class="log-avatar avatar-button' + (assetClass ? ' icon-' + m.icon : '') +
+      '" data-avatar-id="' + m.icon + '" aria-label="' + esc(m.speaker || '캐릭터') +
+      ' 이미지 크게 보기"' + (assetClass ? '' : ' style="background-image:url(&quot;' + src + '&quot;)"') +
+      '></button>' : '<span class="log-avatar">✦</span>';
     const color = safeColor(m.color, project.accent);
     const time = project.showTime && m.time ? '<span class="log-time">' + esc(m.time) + '</span>' : '';
     const channel = project.showChannel ? '<span class="log-channel">' + esc(m.channel) + '</span>' : '';
@@ -358,6 +468,12 @@
     if (!more.hidden) more.textContent = '이어서 보기 — ' + number(filtered.length - previewLimit) + '개 남음 ↓';
     byId('bookMount').querySelectorAll('[data-msg-id]').forEach(el => {
       el.addEventListener('click', () => inspectMessage(Number(el.dataset.msgId)));
+    });
+    byId('bookMount').querySelectorAll('button.avatar-button[data-avatar-id]').forEach(btn => {
+      btn.addEventListener('click', event => {
+        event.stopPropagation();
+        openAvatarViewer(Number(btn.dataset.avatarId), btn);
+      });
     });
     initCoverDrag();
   }
@@ -552,6 +668,7 @@
       const chosen = aggregate ? [aggregate] : htmlFiles;
       const next = freshProject();
       next.title = titleFromFilename(aggregate ? aggregate.name : files[0].name);
+      closeAvatarViewer();
       project = next;
       const imageIds = new Map(), combined = [];
       for (const file of chosen) {
@@ -607,6 +724,14 @@
     if (!raw || !Array.isArray(raw.messages) || !Array.isArray(raw.images)) throw new Error('LOGWEAVER 프로젝트 파일이 아닙니다.');
     const p = Object.assign(freshProject(), raw);
     p.images = raw.images.map(src => validImage(src) ? src : '');
+    p.standings = {};
+    if (raw.standings && typeof raw.standings === 'object' && !Array.isArray(raw.standings)) {
+      for (const [key, src] of Object.entries(raw.standings)) {
+        const id = Number(key);
+        if (/^(0|[1-9][0-9]*)$/.test(key) && id < p.images.length && validImage(p.images[id]) && validImage(src))
+          p.standings[key] = src;
+      }
+    }
     p.messages = raw.messages.map((m,i) => ({
       id:i, channel:String(m.channel || '메인').slice(0,100),
       speaker:String(m.speaker || '').slice(0,300), text:String(m.text || ''),
@@ -654,7 +779,9 @@
   }
 
   function acceptBackup(raw) {
-    project = validateBackup(raw);
+    const restored = validateBackup(raw);
+    closeAvatarViewer();
+    project = restored;
     const existing = new Set(channels().map(x => x.name));
     project.includedChannels = project.includedChannels.filter(x => existing.has(x));
     selectedMessageId = null; selectedCoverId = null; previewChannel = '*';
@@ -759,6 +886,7 @@
   }
 
   function wireEvents() {
+    wireAvatarViewer();
     document.querySelectorAll('[data-panel]').forEach(btn =>
       btn.addEventListener('click', () => switchPanel(btn.dataset.panel))
     );
@@ -771,6 +899,7 @@
     });
     byId('newProjectBtn').addEventListener('click', () => {
       if (!confirm('현재 작업을 새 프로젝트로 바꾸시겠습니까? 먼저 JSON 백업을 권장합니다.')) return;
+      closeAvatarViewer();
       project = freshProject(); selectedMessageId = null; selectedCoverId = null;
       previewLimit = MAX_PREVIEW; previewChannel = '*';
       clearInspector(); syncDesignInputs(); syncProjectInputs(); renderPresets();
